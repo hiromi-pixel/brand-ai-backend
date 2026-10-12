@@ -6,7 +6,7 @@ from fastapi import FastAPI, Form, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 
-app = FastAPI(title="Ultimate Brand & Market Valuation AI Engine", version="7.0")
+app = FastAPI(title="Ultimate Brand & Market Valuation AI Engine", version="8.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,22 +17,6 @@ app.add_middleware(
 )
 
 class ProfessionalAIEngine:
-    def evaluate_image_quality(self, img_array: np.ndarray) -> tuple[bool, str]:
-        brightness = np.mean(img_array) * 255.0
-        if brightness < 35.0:
-            return False, "写真が暗すぎます。明るい環境で撮影してください。"
-        if brightness > 235.0:
-            return False, "白飛びが発生しています。光の反射を抑えて撮影してください。"
-
-        dx = np.abs(img_array[1:, :, :] - img_array[:-1, :, :])
-        dy = np.abs(img_array[:, 1:, :] - img_array[:, :-1, :])
-        sharpness = (np.mean(dx) + np.mean(dy)) * 255.0
-
-        if sharpness < 12.0:
-            return False, "ピントがぼやけています。ルーペ接写またはフォーカスを合わせて撮影してください。"
-
-        return True, "画質・光量は正常です。"
-
     def validate_serial_format(self, brand: str, model_number: str, serial_number: str) -> tuple[bool, str]:
         brand_upper = brand.upper()
         serial_upper = serial_number.strip().upper()
@@ -51,8 +35,8 @@ class ProfessionalAIEngine:
         """ブランド・品目・真贋スコアに応じた3大市場相場推計（買取店・フリマ・オークション）"""
         brand_upper = brand.upper()
 
-        # 参考ベース価格（新品・美中古基準）の標準値
-        base_val = 120000  # デフォルト（バッグ・小物等）
+        # 参考ベース価格の標準値
+        base_val = 120000
         if "ROLEX" in brand_upper:
             base_val = 1800000
         elif "HERMES" in brand_upper:
@@ -62,18 +46,18 @@ class ProfessionalAIEngine:
         elif "LOUIS" in brand_upper or "LV" in brand_upper:
             base_val = 150000
 
-        # AI判定スコア（コンディション・基準適合度）による価格補正率
+        # AI判定スコアによる価格補正率
         condition_factor = max(0.3, score / 100.0)
         
-        # 買取店相場（卸・仕入れ基準: ベースの 55〜65%）
+        # 買取店相場（仕入れ基準）
         buy_store_min = int(base_val * condition_factor * 0.55)
         buy_store_max = int(base_val * condition_factor * 0.68)
 
-        # フリマ相場（メルカリ等・個人間取引: 買取店の 1.25〜1.35倍）
+        # フリマ相場（メルカリ等）
         fleamarket_min = int(buy_store_min * 1.25)
         fleamarket_max = int(buy_store_max * 1.35)
 
-        # オークション相場（ヤフオク等・競り価格: 買取店の 1.15〜1.28倍）
+        # オークション相場（ヤフオク等）
         auction_min = int(buy_store_min * 1.15)
         auction_max = int(buy_store_max * 1.28)
 
@@ -96,7 +80,6 @@ async def authenticate(
     if not files or len(files) < 1:
         raise HTTPException(status_code=400, detail="画像を1枚以上送信してください。")
 
-    quality_results = []
     processed_images = []
 
     for file in files:
@@ -105,16 +88,9 @@ async def authenticate(
             image = Image.open(io.BytesIO(contents)).convert('RGB')
             img_resized = image.resize((150, 150))
             img_array = np.array(img_resized, dtype=np.float32) / 255.0
-            
-            is_valid_q, msg_q = ai_engine.evaluate_image_quality(img_array)
-            quality_results.append((is_valid_q, msg_q))
             processed_images.append(img_array)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"画像処理エラー: {str(e)}")
-
-    invalid_qualities = [q[1] for q in quality_results if not q[0]]
-    if len(invalid_qualities) == len(files):
-        raise HTTPException(status_code=400, detail=f"撮影エラー: {invalid_qualities[0]}")
 
     is_valid_format, format_msg = ai_engine.validate_serial_format(brand, model_number, serial_number)
 
@@ -160,7 +136,6 @@ async def authenticate(
         "message": message,
         "market_prices": market_prices,
         "details": [
-            {"name": "画像撮影クオリティ (解像度・光量)", "pass": len(invalid_qualities) == 0},
             {"name": "型番・シリアルNo.フォーマット整合性", "pass": is_valid_format},
             {"name": "ブランドロゴ・フォント直線比率", "pass": final_score >= 75.0},
             {"name": "シリアル・刻印のエッジ仕上げ深さ", "pass": final_score >= 82.0},
